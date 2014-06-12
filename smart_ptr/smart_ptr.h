@@ -12,19 +12,21 @@ public:
 template<typename T >
 class sp
 {
-
-public:
-    Meter*  _meter;
-    T*		_raw;
-    Meter*  _weak_ref_on_me;
-    sp() : _meter (NULL), _raw (NULL), _weak_ref_on_me (NULL)
+    void assign (const sp  &s)
     {
+        _strong_meter = s._strong_meter;
+        ++ (s._strong_meter->_ref);
+        _weak_meter = s._weak_meter;
     }
+public:
+    Meter*  _strong_meter;
+    T*		_raw;
+    Meter*  _weak_meter;
+    sp() : _strong_meter (NULL), _raw (NULL), _weak_meter (NULL) {}
     sp (T* t)
     {
-        _meter = new Meter (1);
+        _strong_meter = new Meter (1);
         this->_raw = t;
-        //_weak_ref_on_me = new Meter (0);
     }
 
     sp (const sp & s)
@@ -39,22 +41,17 @@ public:
         _raw = dynamic_cast<T*> (s._raw);
     }
 
-    void assign (const sp  &s)
-    {
-        _meter = s._meter;
-        ++ (s._meter->_ref);
-        _weak_ref_on_me = s._weak_ref_on_me;
-    }
+
 
     ~sp()
     {
-        if (_meter)
-            -- (_meter->_ref);
-        if (_meter &&  _meter->_ref == 0)
+        if (_strong_meter)
+            -- (_strong_meter->_ref);
+        if (_strong_meter &&  _strong_meter->_ref == 0)
         {
             SAFE_DELETE (_raw);
-            if (_weak_ref_on_me)
-                _weak_ref_on_me->_ref = -_weak_ref_on_me->_ref;
+            if (_weak_meter)
+                _weak_meter->_ref = -_weak_meter->_ref;
         }
     }
 
@@ -66,6 +63,7 @@ public:
         return *this;
     }
 
+
     template< typename S >
     sp<T>& operator= (sp<S>& sp_)
     {
@@ -74,6 +72,9 @@ public:
         assign (sp_);
         return *this;
     }
+
+
+
     T* operator*()
     {
         return this;
@@ -82,6 +83,7 @@ public:
     {
         return _raw;
     }
+
     operator bool()
     {
         return _raw != NULL;
@@ -92,7 +94,7 @@ public:
     }
     int use_count() const
     {
-        if (_meter) return _meter->_ref;
+        if (_strong_meter) return _strong_meter->_ref;
         return 0;
     }
 
@@ -114,24 +116,44 @@ public:
             if (_weak_ref->_ref < 0)
             {
                 ++_weak_ref->_ref;
-                if (_weak_ref->_ref == 0)  //I am the last raw hold the ref
+                if (_weak_ref->_ref == 0)  //I am the last weak_ptr holding the ref
                     SAFE_DELETE (_weak_ref);
             }
         }
     }
     wp (const wp& s)
     {
+        assign (s);
+    }
+    template<typename T >
+    wp (const sp<T>& s)
+    {
+        return wp;
+    }
+    void assign (const wp &s)
+    {
         _raw = s._raw;
+        _weak_ref = s._weak_ref;
+        if (_weak_ref)
+            ++_weak_ref->_ref;
+    }
+
+
+    wp& operator= (wp<T>& s)
+    {
+        if (_raw == (s._raw)) return *this;
+        assign (s);
+        return *this;
     }
     wp& operator= (sp<T>& s)
     {
         if (_raw == (s._raw)) return *this;
         _raw = (s._raw);
-        if (!s._weak_ref_on_me)
+        if (!s._weak_meter)
         {
-            s._weak_ref_on_me = new Meter (0);
+            s._weak_meter = new Meter (0);
         }
-        _weak_ref = s._weak_ref_on_me;
+        _weak_ref = s._weak_meter;
         ++_weak_ref->_ref;
         return *this;
     }
